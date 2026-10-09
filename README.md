@@ -27,14 +27,12 @@ The host tests require Python and g++; they simulate GPIO and execute the real
 firmware parser, command handler and pipette state machine. They do not measure
 servo motion, ADC calibration, UART wiring, or actual pipetted volume.
 
-## Configuration still requiring measured values
+## Model configuration and sensor calibration
 
 `EE_Pipette/RP2040/include/EE_Config.h` is the model configuration.
 
-- **`PIPETTE_PISTON_PULL_US` is unset (0).** The supplied message included push 2200
-  and liquid exit 2500 but no pull pulse. Command 100 validates the request, then
-  refuses movement until a measured pull endpoint in 500..2500 us is configured.
-  Do not use the synthetic 600 us value in the host test as a mechanical calibration.
+- **`PIPETTE_PISTON_PULL_US = 500 us`**, as measured by the user. Command 100 maps
+  amount 0 / 0.5 / 1 to piston pulses **2200 / 1350 / 500 us** respectively.
 - Servo0 insert/extract = **680 / 2380 us**. Servo1 push/liquid-exit = **2200 / 2500 us**.
 - `PIPETTE_MOVE_SECONDS = 0.6` is an initial movement/power duration, not measured travel feedback.
 - Mini-holder detection provisionally uses GPIO28 ADC, threshold 2048/4095, high = present.
@@ -126,7 +124,7 @@ SBARMV10 `38` wraps `[To ID, EE command, payload]`; it always adds `From ID=0`.
 38 1 1 "EE_Pipette"         # Save EE name
 38 1 4 0 680 0.6            # Servo0 insert pulse, powered for 0.6 s
 38 1 5                     # Read both last commanded servo pulses
-38 1 100 0.5               # Half stroke inhale, AFTER setting measured pull endpoint
+38 1 100 0.5               # Half stroke inhale: servo1 = 1350 us
 38 1 101                   # Exhale
 38 1 102                   # Remove tip
 38 1 103                   # Mini-holder presence

@@ -5,14 +5,14 @@ import tempfile
 
 root = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory() as directory:
-    for calibrated in (False, True):
-        target = Path(directory) / ('configured' if calibrated else 'unconfigured')
+    for configured in (True, False):
+        target = Path(directory) / ('configured' if configured else 'unconfigured')
         args = ['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                 '-I'+str(root/'tests/stubs'), '-I'+str(root/'EE_Pipette/RP2040/include'),
                 '-I'+str(root/'EE_Pipette/RP2040/lib/config/src'),
                 '-I'+str(root/'common/EE_Standard/src')]
-        if calibrated:
-            # Synthetic endpoint for interpolation testing, NOT a hardware calibration.
-            args.append('-DPIPETTE_PISTON_PULL_US=600')
+        if not configured:
+            # Keep coverage of the missing-endpoint guard for future models.
+            args.append('-DPIPETTE_PISTON_PULL_US=0')
         subprocess.run([*args, str(root/'tests/test_firmware.cpp'), '-o', str(target)], check=True)
         subprocess.run([str(target)], check=True)

@@ -59,6 +59,7 @@ int main() {
     assert(test_servo_us[Servo0_PIN] == 1000); // Old tip-return must not overwrite manual servo command.
     command(102); test_ms += 600; loop(); assert(test_servo_us[Servo0_PIN] == 680);
 #if PIPETTE_PISTON_PULL_US >= 500
+    command(100,{0}); assert(test_servo_us[Servo1_PIN] == 2200);
     command(100,{.5f}); assert(test_servo_us[Servo1_PIN] == (2200+PIPETTE_PISTON_PULL_US)/2);
     command(100,{1}); assert(test_servo_us[Servo1_PIN] == PIPETTE_PISTON_PULL_US);
 #else

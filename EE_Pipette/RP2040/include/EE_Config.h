@@ -12,9 +12,9 @@
 
 #define PIPETTE_TIP_INSERT_US 680
 #define PIPETTE_TIP_EXTRACT_US 2380
-// Not supplied yet: enter the measured piston pull pulse before command 100 use.
+// Measured full-pull endpoint supplied by the user, in microseconds.
 #ifndef PIPETTE_PISTON_PULL_US
-#define PIPETTE_PISTON_PULL_US 0
+#define PIPETTE_PISTON_PULL_US 500
 #endif
 #define PIPETTE_PISTON_PUSH_US 2200
 #define PIPETTE_LIQUID_EXIT_US 2500
