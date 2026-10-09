@@ -114,6 +114,11 @@ bool set_servo(unsigned int num, float pulse, float seconds) {
     start_timer(servo_timer[num], seconds);
     return true;
 }
+bool hold_servo(unsigned int num, float pulse) {
+    if (!set_servo(num, pulse, 1)) return false;
+    servo_timer[num].duration = 0; // No deadline; standard power_time=0 still means off.
+    return true;
+}
 bool set_motor(unsigned int num, float power, float seconds) {
     if (num > 1 || !isfinite(power) || fabsf(power) > 1 || !valid_time(seconds)) return false;
     motor_output(num, seconds > 0 ? power : 0);

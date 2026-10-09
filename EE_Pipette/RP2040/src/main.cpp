@@ -34,7 +34,7 @@ static void pipette_command(uint8_t code, const uint8_t *payload, size_t size) {
             return;
         }
         pipette_return[0] = pipette_return[1] = false;
-        EE::set_servo(0, PIPETTE_TIP_INSERT_US, 2 * PIPETTE_INHALE_STAGE_SECONDS);
+        EE::set_servo(0, PIPETTE_TIP_RETURN_US, 2 * PIPETTE_INHALE_STAGE_SECONDS);
         EE::set_servo(1, PIPETTE_PISTON_PULL_US +
                       amount * (PIPETTE_PISTON_PUSH_US - PIPETTE_PISTON_PULL_US),
                       2 * PIPETTE_INHALE_STAGE_SECONDS);
@@ -47,17 +47,28 @@ static void pipette_command(uint8_t code, const uint8_t *payload, size_t size) {
         EE::set_servo(1, PIPETTE_LIQUID_EXIT_US,
                       PIPETTE_PISTON_MOVE_SECONDS + PIPETTE_EXHALE_HOLD_SECONDS);
         break;
-    case 102: // Eject tip, then restore the tip holder.
+    case 102: // Keep pushing the tip until another command controls servo0.
+        if (size) return;
+        pipette_return[0] = false;
+        EE::hold_servo(0, PIPETTE_TIP_INSERT_US);
+        break;
+    case 103: // Stand: replace both pending movements and power off after one second.
+        if (size) return;
+        pipette_return[0] = pipette_return[1] = false;
+        EE::set_servo(0, PIPETTE_TIP_INSERT_US, PIPETTE_STAND_SECONDS);
+        EE::set_servo(1, PIPETTE_PISTON_PULL_US, PIPETTE_STAND_SECONDS);
+        break;
+    case 104: // Eject tip, then restore the tip holder.
         if (size) return;
         EE::set_servo(0, PIPETTE_TIP_EXTRACT_US, 2 * PIPETTE_TIP_MOVE_SECONDS);
         pipette_return[0] = true;
         pipette_started[0] = millis();
         break;
-    case 103: {
+    case 105: {
         if (size) return;
         int raw = EE::adc();
         amount = (raw >= EE_HOLDER_THRESHOLD) == EE_HOLDER_PRESENT_ABOVE ? 1.0f : 0.0f;
-        EE::reply_floats(104, &amount, 1);
+        EE::reply_floats(106, &amount, 1);
         Serial.print("[EE] holder ADC=");
         Serial.print(raw);
         Serial.print(" present=");
@@ -111,7 +122,7 @@ void loop() {
         float seconds = num == 0 ? PIPETTE_TIP_MOVE_SECONDS : PIPETTE_INHALE_STAGE_SECONDS;
         if (pipette_return[num] && uint32_t(millis() - pipette_started[num]) >=
                 uint32_t(seconds * 1000)) {
-            EE::set_servo(num, num == 0 ? PIPETTE_TIP_INSERT_US : PIPETTE_PISTON_PULL_US, seconds);
+            EE::set_servo(num, num == 0 ? PIPETTE_TIP_RETURN_US : PIPETTE_PISTON_PULL_US, seconds);
             pipette_return[num] = false;
         }
     }

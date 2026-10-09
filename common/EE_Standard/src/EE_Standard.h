@@ -24,6 +24,7 @@ void reply(uint8_t code, const uint8_t *payload = nullptr, size_t size = 0);
 void reply_floats(uint8_t code, const float *values, size_t count);
 bool read_floats(const uint8_t *payload, size_t size, float *values, size_t count);
 bool set_servo(unsigned int num, float pulse_us, float seconds);
+bool hold_servo(unsigned int num, float pulse_us); // Until replaced by another servo command.
 bool set_motor(unsigned int num, float power, float seconds);
 bool set_heater(float power, float seconds);
 float adc();

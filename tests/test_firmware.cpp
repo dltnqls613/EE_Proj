@@ -54,14 +54,14 @@ int main() {
     for (int raw : {0, 2047, 2048, 4095}) {
         test_adc[ADC_PIN] = raw;
         Serial.output.clear();
-        command(103); check_reply(104);
+        command(105); check_reply(106);
         int present = raw >= 2048;
         assert(reply_value() == present);
         assert(Serial.output == "[EE] holder ADC=" + std::to_string(raw) +
                                 " present=" + std::to_string(present) + "\n");
     }
     replies = Uart.output.size(); Serial.output.clear();
-    command(103,{1}); assert(Uart.output.size() == replies && Serial.output.empty());
+    command(105,{1}); assert(Uart.output.size() == replies && Serial.output.empty());
     command(20,{.1f}); command(21,{.01f}); command(22,{.2f}); command(19,{50});
     command(23); check_reply(24);
     assert(reply_value() == 50 && reply_value(1) == .1f && reply_value(2) == .01f && reply_value(3) == .2f);
@@ -72,17 +72,34 @@ int main() {
     advance(2999); assert(test_pins[Servo1_EN_PIN] == HIGH && test_servo_us[Servo1_PIN] == 2500);
     advance(1); assert(test_pins[Servo1_EN_PIN] == LOW);
     advance(3000); assert(test_servo_us[Servo1_PIN] == 2500);
-    // 102: two seconds at each target; no power interruption at the return.
-    command(102); assert(test_servo_us[Servo0_PIN] == 2380);
+    // 104: two seconds at each target; no power interruption at the return.
+    command(104); assert(test_servo_us[Servo0_PIN] == 2380);
     advance(1999); assert(test_pins[Servo0_EN_PIN] == HIGH && test_servo_us[Servo0_PIN] == 2380);
     test_pin_writes.clear(); advance(1);
     assert(test_servo_us[Servo0_PIN] == 680 && test_pins[Servo0_EN_PIN] == HIGH);
     check_kept_power(Servo0_EN_PIN);
     advance(1999); assert(test_pins[Servo0_EN_PIN] == HIGH);
     advance(1); assert(test_pins[Servo0_EN_PIN] == LOW);
-    command(102); command(4,{0,1000,3}); advance(2001);
+    command(104); command(4,{0,1000,3}); advance(2001);
     assert(test_servo_us[Servo0_PIN] == 1000 && test_pins[Servo0_EN_PIN] == HIGH);
     advance(999); assert(test_pins[Servo0_EN_PIN] == LOW);
+    // 102: replace a pending removal return with a real indefinite hold.
+    command(104); advance(1000); command(102);
+    assert(test_servo_us[Servo0_PIN] == 2380 && test_pins[Servo0_EN_PIN] == HIGH);
+    test_pin_writes.clear(); advance(3601000); // Beyond the maximum standard timed output.
+    assert(test_servo_us[Servo0_PIN] == 2380 && test_pins[Servo0_EN_PIN] == HIGH);
+    check_kept_power(Servo0_EN_PIN);
+    command(105); check_reply(106); command(101); advance(5000);
+    assert(test_pins[Servo0_EN_PIN] == HIGH && test_pins[Servo1_EN_PIN] == LOW);
+    command(4,{1,1500,.1f}); advance(100);
+    command(4,{0,2600,1}); command(102,{1}); command(103,{1}); advance(1000);
+    assert(test_servo_us[Servo0_PIN] == 2380 && test_pins[Servo0_EN_PIN] == HIGH);
+    command(4,{0,2380,0}); assert(test_pins[Servo0_EN_PIN] == LOW);
+    test_ms = 0xFFFFFFF0; command(102); advance(1000);
+    assert(test_pins[Servo0_EN_PIN] == HIGH); // Hold is not affected by millis() wrap.
+    command(4,{0,1500,.25f}); advance(249);
+    assert(test_servo_us[Servo0_PIN] == 1500 && test_pins[Servo0_EN_PIN] == HIGH);
+    advance(1); assert(test_pins[Servo0_EN_PIN] == LOW);
 #if PIPETTE_PISTON_PULL_US >= 500
     // 100: amount 0/0.5/1 presses to 500/1350/2200, then returns to 500.
     for (float amount : {0.0f, .5f, 1.0f}) {
@@ -107,10 +124,21 @@ int main() {
     advance(3000); assert(test_servo_us[Servo1_PIN] == 2500 && test_pins[Servo1_EN_PIN] == LOW);
     // Independent tip and piston sequences, including a millis() wrap.
     test_ms = 0xFFFFFFF0;
-    command(100,{1}); advance(1000); command(102); advance(2000);
+    command(100,{1}); advance(1000); command(104); advance(2000);
     assert(test_servo_us[Servo0_PIN] == 680 && test_servo_us[Servo1_PIN] == PIPETTE_PISTON_PULL_US);
     advance(2000); assert(test_pins[Servo0_EN_PIN] == LOW && test_pins[Servo1_EN_PIN] == HIGH);
     advance(1000); assert(test_pins[Servo1_EN_PIN] == LOW);
+    // 103: stand supersedes both deferred strokes and switches both channels off at 1 s.
+    command(100,{1}); command(104); advance(500); command(103);
+    assert(test_servo_us[Servo0_PIN] == 2380 && test_servo_us[Servo1_PIN] == 500);
+    advance(999); assert(test_pins[Servo0_EN_PIN] == HIGH && test_pins[Servo1_EN_PIN] == HIGH);
+    advance(1); assert(test_pins[Servo0_EN_PIN] == LOW && test_pins[Servo1_EN_PIN] == LOW);
+    advance(6000);
+    assert(test_servo_us[Servo0_PIN] == 2380 && test_servo_us[Servo1_PIN] == 500);
+    assert(test_pins[Servo0_EN_PIN] == LOW && test_pins[Servo1_EN_PIN] == LOW);
+    command(102); Serial.input = "103\n"; loop(); advance(1000);
+    assert(test_pins[Servo0_EN_PIN] == LOW && test_pins[Servo1_EN_PIN] == LOW);
+    assert(test_servo_us[Servo0_PIN] == 2380 && test_servo_us[Servo1_PIN] == 500);
 #else
     int before = test_servo_us[Servo1_PIN]; command(100,{1}); assert(test_servo_us[Servo1_PIN] == before);
 #endif

@@ -34,14 +34,17 @@ servo motion, ADC calibration, UART wiring, or actual pipetted volume.
 - **`PIPETTE_PISTON_PULL_US = 500 us`**, as measured by the user. Command 100 maps
   amount 0 / 0.5 / 1 to press targets **500 / 1350 / 2200 us** respectively, then
   returns to **500 us** to aspirate. Amount 1 is the maximum aspiration stroke.
-- Servo0 insert/extract = **680 / 2380 us**. Servo1 push/liquid-exit = **2200 / 2500 us**.
+- Servo0 insertion hold/stand = **2380 us**; existing removal stroke = **2380 -> 680 us**.
+  Servo1 push/liquid-exit = **2200 / 2500 us**; stand = **500 us**.
 - `PIPETTE_INHALE_STAGE_SECONDS = 3`: each press/return phase of command 100 gets 3 seconds.
 - `PIPETTE_PISTON_MOVE_SECONDS = 2`, `PIPETTE_EXHALE_HOLD_SECONDS = 3`: command 101
   stays at the exit target for 5 seconds before switching power off, without returning.
-- `PIPETTE_TIP_MOVE_SECONDS = 2`: each extract/return phase of command 102 gets 2 seconds.
+- Command 102 holds servo0 at 2380 us indefinitely until another valid servo0 command.
+- `PIPETTE_STAND_SECONDS = 1`: command 103 moves both servos to 2380/500 us, then powers off.
+- `PIPETTE_TIP_MOVE_SECONDS = 2`: each extract/return phase of command 104 gets 2 seconds.
   These are timer-based travel allowances; the servos have no position feedback.
 - The infrared proximity sensor uses GPIO28 ADC, threshold 2048/4095, high = present.
-  Command 103 replies with code 104 (float 0/1) to master ID 0 and prints the raw ADC
+  Command 105 replies with code 106 (float 0/1) to master ID 0 and prints the raw ADC
   and presence result over USB Serial. Set `EE_HOLDER_PRESENT_ABOVE` false if wiring is inverted.
 - HX711 zero and counts/kg require calibration. Uncalibrated/absent/stale weight is NaN.
 - Temperature sensor type was not supplied. The provided linear conversion is disabled
@@ -111,22 +114,34 @@ Invalid temperature or temperature >= configured maximum turns PID heat off.
 
 ## Pipette commands
 
+Codes follow the updated `EE_Command` sheet: 102 insert, 103 stand, 104 remove,
+105 presence request, 106 presence reply. Update the EE firmware, SBARMV10 and
+SB_Control together. Existing saved projects must change old remove requests from
+102 to 104 and old presence requests from 103 to 105; old codes now perform new actions.
+
 | Request | Behavior | Reply |
 |---|---|---|
-| 100 amount f (0..1) | Servo0 insert; servo1 = pull + amount × (push − pull) for 3 s, then pull (500 us) for 3 s; power off | — |
+| 100 amount f (0..1) | Servo0 to 680 us; servo1 = pull + amount × (push − pull) for 3 s, then pull (500 us) for 3 s; power off | — |
 | 101 | Servo1 liquid exit (2500 us): 2 s travel allowance + 3 s hold, then power off; no automatic return | — |
-| 102 | Servo0 extract (2380 us) for 2 s, then insert (680 us) for 2 s; power off | — |
-| 103 | Read infrared presence using the ADC midpoint; print ADC and presence to USB Serial | 104, 0 or 1 as float |
+| 102 | Insert pipette tip: hold servo0 at 2380 us with no timeout until another servo0 command | — |
+| 103 | Stand: servo0 to 2380 us, servo1 to 500 us; both powered for 1 s, then off | — |
+| 104 | Remove tip: servo0 to 2380 us for 2 s, then 680 us for 2 s; power off | — |
+| 105 | Read infrared presence using the ADC midpoint; print ADC and presence to USB Serial | 106, 0 or 1 as float |
 
 Amount is an aspiration stroke fraction; it is not a calibrated microlitre volume.
 Power stays enabled across the press/return and extract/return transitions. Each servo
 has its own nonblocking return timer, so UART and standard queries remain responsive.
 A later standard servo command overrides that servo's pending return, a new inhale
 supersedes pending pipette returns, and exhale cancels a pending piston return.
+Insertion cancels servo0's pending return, without affecting servo1. Stand cancels
+both pending returns. Queries and servo1-only commands leave the insertion hold active.
+The hold is implemented without a timer deadline; standard code 4 still interprets
+power_time 0 as immediate power off, so `84 4 0 2380 0` also releases an insertion hold.
 
 ## SB_FPS console examples
 
 SBARMV10 `38` wraps `[To ID, EE command, payload]`; it always adds `From ID=0`.
+`84` wraps `[EE command, payload]` and automatically selects the discovered EE ID.
 `36` requests EE identity. `37` returns `[ID, name]` (255 = unknown/disconnected).
 `39` returns `[From ID, EE reply code, payload]` and is decoded by SB_Control.
 
@@ -134,12 +149,14 @@ SBARMV10 `38` wraps `[To ID, EE command, payload]`; it always adds `From ID=0`.
 36                         # Request EE identity
 38 255 2                   # Name discovery
 38 1 1 "EE_Pipette"         # Save EE name
-38 1 4 0 680 0.6            # Servo0 insert pulse, powered for 0.6 s
+38 1 4 0 680 0.6            # Servo0 at 680 us, powered for 0.6 s
 38 1 5                     # Read both last commanded servo pulses
 38 1 100 0.5               # Half stroke inhale: 1350 us for 3 s, then 500 us for 3 s
 38 1 101                   # Exhale
-38 1 102                   # Remove tip
-38 1 103                   # Mini-holder presence
+84 102                     # Insert tip: servo0 holds 2380 us
+84 103                     # Stand: 2380/500 us, power off after 1 s
+84 104                     # Remove tip
+84 105                     # Mini-holder presence; reply EE code 106
 ```
 
 After successful robot command 80 and after command 82's actual motor timer completes,

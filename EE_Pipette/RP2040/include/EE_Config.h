@@ -10,7 +10,8 @@
 #define EE_SERVO0_INITIAL_US 680
 #define EE_SERVO1_INITIAL_US 2200
 
-#define PIPETTE_TIP_INSERT_US 680
+#define PIPETTE_TIP_RETURN_US 680
+#define PIPETTE_TIP_INSERT_US 2380
 #define PIPETTE_TIP_EXTRACT_US 2380
 // Measured full-pull endpoint supplied by the user, in microseconds.
 #ifndef PIPETTE_PISTON_PULL_US
@@ -22,6 +23,7 @@
 #define PIPETTE_PISTON_MOVE_SECONDS 2.0f
 #define PIPETTE_EXHALE_HOLD_SECONDS 3.0f
 #define PIPETTE_TIP_MOVE_SECONDS 2.0f
+#define PIPETTE_STAND_SECONDS 1.0f
 
 // Infrared proximity sensor on ADC_PIN; midpoint of the 12-bit ADC range.
 #define EE_HOLDER_THRESHOLD 2048
