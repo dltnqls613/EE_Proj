@@ -16,6 +16,8 @@ static bool serial_overflow = false;
 
 static void uart_send(const uint8_t *packet, size_t size) { Uart.write(packet, size); }
 
+// All standard requests/replies are handled by EE_Standard.cpp. Code 4 here is
+// only a post-success hook to cancel a model-specific deferred servo movement.
 static void pipette_command(uint8_t code, const uint8_t *payload, size_t size) {
     float amount;
     switch (code) {
@@ -25,34 +27,43 @@ static void pipette_command(uint8_t code, const uint8_t *payload, size_t size) {
               pipette_return[int(values[0])] = false;
         }
         break;
-    case 100: // Absolute inhale fraction: 0 = push position, 1 = full pull.
+    case 100: // Press by the requested stroke, then pull back to aspirate.
         if (!EE::read_floats(payload, size, &amount, 1) || amount < 0 || amount > 1) return;
         if (PIPETTE_PISTON_PULL_US < EE_SERVO_MIN_US || PIPETTE_PISTON_PULL_US > EE_SERVO_MAX_US) {
             Serial.println("[EE] Set PIPETTE_PISTON_PULL_US to the measured pull pulse first.");
             return;
         }
         pipette_return[0] = pipette_return[1] = false;
-        EE::set_servo(0, PIPETTE_TIP_INSERT_US, PIPETTE_MOVE_SECONDS);
-        EE::set_servo(1, PIPETTE_PISTON_PUSH_US +
-                      amount * (PIPETTE_PISTON_PULL_US - PIPETTE_PISTON_PUSH_US), PIPETTE_MOVE_SECONDS);
-        break;
-    case 101: // Blow out, then return to the push position.
-        if (size) return;
-        EE::set_servo(1, PIPETTE_LIQUID_EXIT_US, PIPETTE_MOVE_SECONDS);
+        EE::set_servo(0, PIPETTE_TIP_INSERT_US, 2 * PIPETTE_INHALE_STAGE_SECONDS);
+        EE::set_servo(1, PIPETTE_PISTON_PULL_US +
+                      amount * (PIPETTE_PISTON_PUSH_US - PIPETTE_PISTON_PULL_US),
+                      2 * PIPETTE_INHALE_STAGE_SECONDS);
         pipette_return[1] = true;
         pipette_started[1] = millis();
         break;
+    case 101: // Blow out and hold; returning the piston would draw liquid back in.
+        if (size) return;
+        pipette_return[1] = false;
+        EE::set_servo(1, PIPETTE_LIQUID_EXIT_US,
+                      PIPETTE_PISTON_MOVE_SECONDS + PIPETTE_EXHALE_HOLD_SECONDS);
+        break;
     case 102: // Eject tip, then restore the tip holder.
         if (size) return;
-        EE::set_servo(0, PIPETTE_TIP_EXTRACT_US, PIPETTE_MOVE_SECONDS);
+        EE::set_servo(0, PIPETTE_TIP_EXTRACT_US, 2 * PIPETTE_TIP_MOVE_SECONDS);
         pipette_return[0] = true;
         pipette_started[0] = millis();
         break;
-    case 103:
+    case 103: {
         if (size) return;
-        amount = (EE::adc() >= EE_HOLDER_THRESHOLD) == EE_HOLDER_PRESENT_ABOVE ? 1.0f : 0.0f;
+        int raw = EE::adc();
+        amount = (raw >= EE_HOLDER_THRESHOLD) == EE_HOLDER_PRESENT_ABOVE ? 1.0f : 0.0f;
         EE::reply_floats(104, &amount, 1);
+        Serial.print("[EE] holder ADC=");
+        Serial.print(raw);
+        Serial.print(" present=");
+        Serial.println(amount == 1 ? "1" : "0");
         break;
+    }
     }
 }
 
@@ -97,10 +108,10 @@ void loop() {
     size_t size = Uart.read(buffer, sizeof(buffer));
     for (size_t i = 0; i < size; ++i) EE::receive(buffer[i]);
     for (int num = 0; num < 2; ++num) {
+        float seconds = num == 0 ? PIPETTE_TIP_MOVE_SECONDS : PIPETTE_INHALE_STAGE_SECONDS;
         if (pipette_return[num] && uint32_t(millis() - pipette_started[num]) >=
-                uint32_t(PIPETTE_MOVE_SECONDS * 1000)) {
-            EE::set_servo(num, num == 0 ? PIPETTE_TIP_INSERT_US : PIPETTE_PISTON_PUSH_US,
-                          PIPETTE_MOVE_SECONDS);
+                uint32_t(seconds * 1000)) {
+            EE::set_servo(num, num == 0 ? PIPETTE_TIP_INSERT_US : PIPETTE_PISTON_PULL_US, seconds);
             pipette_return[num] = false;
         }
     }

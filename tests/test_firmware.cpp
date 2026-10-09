@@ -14,6 +14,10 @@ std::vector<uint8_t> packet(int code, std::vector<float> values = {}, int from =
 }
 void feed(const std::vector<uint8_t> &bytes) { for (auto value : bytes) EE::receive(value); }
 void command(int code, std::vector<float> args = {}) { feed(packet(code,args)); }
+void advance(uint32_t milliseconds) { test_ms += milliseconds; loop(); }
+void check_kept_power(int pin) {
+    for (const auto &write : test_pin_writes) assert(write.pin != pin || write.value != LOW);
+}
 float reply_value(int index = 0) { float value; memcpy(&value,Uart.output.back().data()+7+index*4,4); return value; }
 void check_reply(int code) {
     const auto &p = Uart.output.back();
@@ -47,21 +51,66 @@ int main() {
     command(10); check_reply(11); assert(isnan(reply_value()));
     command(12); check_reply(13); assert(isnan(reply_value()));
     test_adc[ADC_PIN] = 3000; command(14); check_reply(15); assert(reply_value() == 3000);
-    command(103); check_reply(104); assert(reply_value() == 1);
-    test_adc[ADC_PIN] = 100; command(103); assert(reply_value() == 0);
+    for (int raw : {0, 2047, 2048, 4095}) {
+        test_adc[ADC_PIN] = raw;
+        Serial.output.clear();
+        command(103); check_reply(104);
+        int present = raw >= 2048;
+        assert(reply_value() == present);
+        assert(Serial.output == "[EE] holder ADC=" + std::to_string(raw) +
+                                " present=" + std::to_string(present) + "\n");
+    }
+    replies = Uart.output.size(); Serial.output.clear();
+    command(103,{1}); assert(Uart.output.size() == replies && Serial.output.empty());
     command(20,{.1f}); command(21,{.01f}); command(22,{.2f}); command(19,{50});
-    command(23); check_reply(24); assert(reply_value() == 50 && reply_value(1) == .1f);
+    command(23); check_reply(24);
+    assert(reply_value() == 50 && reply_value(1) == .1f && reply_value(2) == .01f && reply_value(3) == .2f);
     test_ms = 500; loop(); assert(test_pins[HEATER_PWM_PIN] == 0); // Uncalibrated sensor.
+    // 101: two seconds to travel, then three seconds held at blow-out, no return.
     command(101); assert(test_servo_us[Servo1_PIN] == 2500);
-    test_ms += 600; loop(); assert(test_servo_us[Servo1_PIN] == 2200);
+    advance(2000); assert(test_pins[Servo1_EN_PIN] == HIGH);
+    advance(2999); assert(test_pins[Servo1_EN_PIN] == HIGH && test_servo_us[Servo1_PIN] == 2500);
+    advance(1); assert(test_pins[Servo1_EN_PIN] == LOW);
+    advance(3000); assert(test_servo_us[Servo1_PIN] == 2500);
+    // 102: two seconds at each target; no power interruption at the return.
     command(102); assert(test_servo_us[Servo0_PIN] == 2380);
-    command(4,{0,1000,1}); test_ms += 700; loop();
-    assert(test_servo_us[Servo0_PIN] == 1000); // Old tip-return must not overwrite manual servo command.
-    command(102); test_ms += 600; loop(); assert(test_servo_us[Servo0_PIN] == 680);
+    advance(1999); assert(test_pins[Servo0_EN_PIN] == HIGH && test_servo_us[Servo0_PIN] == 2380);
+    test_pin_writes.clear(); advance(1);
+    assert(test_servo_us[Servo0_PIN] == 680 && test_pins[Servo0_EN_PIN] == HIGH);
+    check_kept_power(Servo0_EN_PIN);
+    advance(1999); assert(test_pins[Servo0_EN_PIN] == HIGH);
+    advance(1); assert(test_pins[Servo0_EN_PIN] == LOW);
+    command(102); command(4,{0,1000,3}); advance(2001);
+    assert(test_servo_us[Servo0_PIN] == 1000 && test_pins[Servo0_EN_PIN] == HIGH);
+    advance(999); assert(test_pins[Servo0_EN_PIN] == LOW);
 #if PIPETTE_PISTON_PULL_US >= 500
-    command(100,{0}); assert(test_servo_us[Servo1_PIN] == 2200);
-    command(100,{.5f}); assert(test_servo_us[Servo1_PIN] == (2200+PIPETTE_PISTON_PULL_US)/2);
-    command(100,{1}); assert(test_servo_us[Servo1_PIN] == PIPETTE_PISTON_PULL_US);
+    // 100: amount 0/0.5/1 presses to 500/1350/2200, then returns to 500.
+    for (float amount : {0.0f, .5f, 1.0f}) {
+        command(100,{amount});
+        int target = lroundf(PIPETTE_PISTON_PULL_US + amount * (2200-PIPETTE_PISTON_PULL_US));
+        assert(test_servo_us[Servo1_PIN] == target && test_servo_us[Servo0_PIN] == 680);
+        command(5); check_reply(6); assert(reply_value(1) == target); // Standard query during motion.
+        advance(2999); assert(test_servo_us[Servo1_PIN] == target && test_pins[Servo1_EN_PIN] == HIGH);
+        test_pin_writes.clear(); advance(1);
+        assert(test_servo_us[Servo1_PIN] == PIPETTE_PISTON_PULL_US && test_pins[Servo1_EN_PIN] == HIGH);
+        check_kept_power(Servo1_EN_PIN);
+        advance(2999); assert(test_pins[Servo1_EN_PIN] == HIGH);
+        advance(1); assert(test_pins[Servo1_EN_PIN] == LOW && test_pins[Servo0_EN_PIN] == LOW);
+    }
+    command(100,{1}); command(100,{-1}); command(100,{1.1f});
+    command(100,{std::numeric_limits<float>::quiet_NaN()});
+    advance(3000); assert(test_servo_us[Servo1_PIN] == PIPETTE_PISTON_PULL_US);
+    command(100,{1}); command(4,{1,1500,4}); advance(3000);
+    assert(test_servo_us[Servo1_PIN] == 1500); // Manual standard output cancels aspiration return.
+    command(100,{1}); advance(1000); command(101); advance(2000);
+    assert(test_servo_us[Servo1_PIN] == 2500 && test_pins[Servo1_EN_PIN] == HIGH);
+    advance(3000); assert(test_servo_us[Servo1_PIN] == 2500 && test_pins[Servo1_EN_PIN] == LOW);
+    // Independent tip and piston sequences, including a millis() wrap.
+    test_ms = 0xFFFFFFF0;
+    command(100,{1}); advance(1000); command(102); advance(2000);
+    assert(test_servo_us[Servo0_PIN] == 680 && test_servo_us[Servo1_PIN] == PIPETTE_PISTON_PULL_US);
+    advance(2000); assert(test_pins[Servo0_EN_PIN] == LOW && test_pins[Servo1_EN_PIN] == HIGH);
+    advance(1000); assert(test_pins[Servo1_EN_PIN] == LOW);
 #else
     int before = test_servo_us[Servo1_PIN]; command(100,{1}); assert(test_servo_us[Servo1_PIN] == before);
 #endif
@@ -72,6 +121,25 @@ int main() {
     // USB command must not corrupt a fragmented UART frame.
     auto query = packet(5); feed({query.begin(),query.begin()+4});
     Serial.input = "14\n"; loop(); feed({query.begin()+4,query.end()}); check_reply(6);
+    // Every standard request is also reachable through the model's USB text parser.
+    struct StandardRequest { const char *text; int reply; };
+    const StandardRequest standard[] = {
+        {"1 USB Pipette\n",3}, {"2\n",3}, {"4 1 1500 0.1\n",0}, {"5\n",6},
+        {"7 0 0.25 0.1\n",0}, {"8\n",9}, {"10\n",11}, {"12\n",13}, {"14\n",15},
+        {"16 0.5 0.1\n",0}, {"17\n",18}, {"19 40\n",0}, {"20 1\n",0},
+        {"21 2\n",0}, {"22 3\n",0}, {"23\n",24}
+    };
+    for (const auto &request : standard) {
+        replies = Uart.output.size();
+        Serial.input = request.text; loop();
+        assert(Uart.output.size() == replies + (request.reply != 0));
+        if (request.reply) check_reply(request.reply);
+        if (request.reply == 6) assert(reply_value(1) == 1500);
+        if (request.reply == 9) assert(reply_value() == .25f);
+        if (request.reply == 18) assert(reply_value() == .5f);
+        if (request.reply == 24)
+            assert(reply_value() == 40 && reply_value(1) == 1 && reply_value(2) == 2 && reply_value(3) == 3);
+    }
     // uint32 timer wrap.
     test_ms = 0xFFFFFFF0; command(7,{0,1,.1f}); test_ms = 100; loop();
     command(8); assert(reply_value() == 0);

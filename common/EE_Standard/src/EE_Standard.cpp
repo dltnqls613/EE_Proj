@@ -103,9 +103,12 @@ bool set_servo(unsigned int num, float pulse, float seconds) {
         pulse > EE_SERVO_MAX_US || !valid_time(seconds)) return false;
     if (seconds == 0) { servo_off(num); return true; }
     servo_pulse[num] = lroundf(pulse);
-    // Keep the power gate off while attaching/configuring the PWM signal.
-    digitalWrite(enable_pins[num], !EE_SERVO_ENABLE_LEVEL);
-    if (!servos[num].attached()) servos[num].attach(servo_pins[num], EE_SERVO_MIN_US, EE_SERVO_MAX_US);
+    // Gate power only when initially attaching; an active sequence stays powered
+    // when its target changes for the return stroke.
+    if (!servos[num].attached()) {
+        digitalWrite(enable_pins[num], !EE_SERVO_ENABLE_LEVEL);
+        servos[num].attach(servo_pins[num], EE_SERVO_MIN_US, EE_SERVO_MAX_US);
+    }
     servos[num].writeMicroseconds(lroundf(pulse));
     digitalWrite(enable_pins[num], EE_SERVO_ENABLE_LEVEL);
     start_timer(servo_timer[num], seconds);

@@ -32,11 +32,17 @@ servo motion, ADC calibration, UART wiring, or actual pipetted volume.
 `EE_Pipette/RP2040/include/EE_Config.h` is the model configuration.
 
 - **`PIPETTE_PISTON_PULL_US = 500 us`**, as measured by the user. Command 100 maps
-  amount 0 / 0.5 / 1 to piston pulses **2200 / 1350 / 500 us** respectively.
+  amount 0 / 0.5 / 1 to press targets **500 / 1350 / 2200 us** respectively, then
+  returns to **500 us** to aspirate. Amount 1 is the maximum aspiration stroke.
 - Servo0 insert/extract = **680 / 2380 us**. Servo1 push/liquid-exit = **2200 / 2500 us**.
-- `PIPETTE_MOVE_SECONDS = 0.6` is an initial movement/power duration, not measured travel feedback.
-- Mini-holder detection provisionally uses GPIO28 ADC, threshold 2048/4095, high = present.
-  Confirm its wiring, polarity and threshold on the actual holder.
+- `PIPETTE_INHALE_STAGE_SECONDS = 3`: each press/return phase of command 100 gets 3 seconds.
+- `PIPETTE_PISTON_MOVE_SECONDS = 2`, `PIPETTE_EXHALE_HOLD_SECONDS = 3`: command 101
+  stays at the exit target for 5 seconds before switching power off, without returning.
+- `PIPETTE_TIP_MOVE_SECONDS = 2`: each extract/return phase of command 102 gets 2 seconds.
+  These are timer-based travel allowances; the servos have no position feedback.
+- The infrared proximity sensor uses GPIO28 ADC, threshold 2048/4095, high = present.
+  Command 103 replies with code 104 (float 0/1) to master ID 0 and prints the raw ADC
+  and presence result over USB Serial. Set `EE_HOLDER_PRESENT_ABOVE` false if wiring is inverted.
 - HX711 zero and counts/kg require calibration. Uncalibrated/absent/stale weight is NaN.
 - Temperature sensor type was not supplied. The provided linear conversion is disabled
   (`EE_TEMP_C_PER_COUNT = 0`), so temperature is NaN and PID output stays off until the
@@ -67,6 +73,10 @@ are ignored. A partial frame expires after a 100 ms inter-byte gap.
   Query responses remain binary UART replies to the master; USB only prints diagnostics.
 
 ## Standard commands
+
+Every request below is dispatched by `common/EE_Standard/src/EE_Standard.cpp` for
+both UART and USB text input. The model's code 4 callback only cancels a pending
+pipette return after a successful standard servo command; it is not the standard dispatcher.
 
 `f` = float32; `s` = UTF-8 text without a NUL terminator. Units not specified by the
 sheet are explicitly defined here: pulse = us, time = seconds, normalized power.
@@ -103,14 +113,16 @@ Invalid temperature or temperature >= configured maximum turns PID heat off.
 
 | Request | Behavior | Reply |
 |---|---|---|
-| 100 amount f (0..1) | Servo0 insert; servo1 = push + amount × (pull − push) | — |
-| 101 | Servo1 liquid exit, then push after 0.6 s | — |
-| 102 | Servo0 extract, then insert after 0.6 s | — |
-| 103 | Read mini-holder presence | 104, 0 or 1 as float |
+| 100 amount f (0..1) | Servo0 insert; servo1 = pull + amount × (push − pull) for 3 s, then pull (500 us) for 3 s; power off | — |
+| 101 | Servo1 liquid exit (2500 us): 2 s travel allowance + 3 s hold, then power off; no automatic return | — |
+| 102 | Servo0 extract (2380 us) for 2 s, then insert (680 us) for 2 s; power off | — |
+| 103 | Read infrared presence using the ADC midpoint; print ADC and presence to USB Serial | 104, 0 or 1 as float |
 
-Amount is an absolute piston stroke fraction; it is not a calibrated microlitre volume.
-Each servo has its own nonblocking return timer. A later standard servo command overrides
-that servo's pending return, and a new inhale supersedes pending pipette returns.
+Amount is an aspiration stroke fraction; it is not a calibrated microlitre volume.
+Power stays enabled across the press/return and extract/return transitions. Each servo
+has its own nonblocking return timer, so UART and standard queries remain responsive.
+A later standard servo command overrides that servo's pending return, a new inhale
+supersedes pending pipette returns, and exhale cancels a pending piston return.
 
 ## SB_FPS console examples
 
@@ -124,7 +136,7 @@ SBARMV10 `38` wraps `[To ID, EE command, payload]`; it always adds `From ID=0`.
 38 1 1 "EE_Pipette"         # Save EE name
 38 1 4 0 680 0.6            # Servo0 insert pulse, powered for 0.6 s
 38 1 5                     # Read both last commanded servo pulses
-38 1 100 0.5               # Half stroke inhale: servo1 = 1350 us
+38 1 100 0.5               # Half stroke inhale: 1350 us for 3 s, then 500 us for 3 s
 38 1 101                   # Exhale
 38 1 102                   # Remove tip
 38 1 103                   # Mini-holder presence

@@ -18,9 +18,12 @@
 #endif
 #define PIPETTE_PISTON_PUSH_US 2200
 #define PIPETTE_LIQUID_EXIT_US 2500
-#define PIPETTE_MOVE_SECONDS 0.6f
+#define PIPETTE_INHALE_STAGE_SECONDS 3.0f
+#define PIPETTE_PISTON_MOVE_SECONDS 2.0f
+#define PIPETTE_EXHALE_HOLD_SECONDS 3.0f
+#define PIPETTE_TIP_MOVE_SECONDS 2.0f
 
-// ADC_PIN is provisionally the mini-holder sensor. Calibrate polarity/threshold.
+// Infrared proximity sensor on ADC_PIN; midpoint of the 12-bit ADC range.
 #define EE_HOLDER_THRESHOLD 2048
 #define EE_HOLDER_PRESENT_ABOVE true
 
