@@ -1,0 +1,13 @@
+{
+  "name": "RP2040_UART",
+  "version": "1.0.0",
+  "description": "Low-latency full-duplex DMA UART for RP2040 and Arduino-Pico",
+  "frameworks": "arduino",
+  "platforms": "raspberrypi",
+  "build": {
+    "flags": [
+      "-DRP2040_UART_TX_BUFFER_SIZE=4096",
+      "-DRP2040_UART_RX_BUFFER_SIZE=4096"
+    ]
+  }
+}
