@@ -34,13 +34,13 @@ servo motion, ADC calibration, UART wiring, or actual pipetted volume.
 - **`PIPETTE_PISTON_PULL_US = 500 us`**, as measured by the user. Command 100 maps
   amount 0 / 0.5 / 1 to press targets **500 / 1350 / 2200 us** respectively, then
   returns to **500 us** to aspirate. Amount 1 is the maximum aspiration stroke.
-- Servo0 insertion hold/stand = **2380 us**; existing removal stroke = **2380 -> 680 us**.
+- Servo0 insertion hold = **2380 us**, stand = **680 us**; removal stroke = **2380 -> 680 us**.
   Servo1 push/liquid-exit = **2200 / 2500 us**; stand = **500 us**.
 - `PIPETTE_INHALE_STAGE_SECONDS = 3`: each press/return phase of command 100 gets 3 seconds.
 - `PIPETTE_PISTON_MOVE_SECONDS = 2`, `PIPETTE_EXHALE_HOLD_SECONDS = 3`: command 101
   stays at the exit target for 5 seconds before switching power off, without returning.
 - Command 102 holds servo0 at 2380 us indefinitely until another valid servo0 command.
-- `PIPETTE_STAND_SECONDS = 1`: command 103 moves both servos to 2380/500 us, then powers off.
+- `PIPETTE_STAND_SECONDS = 1`: command 103 moves both servos to 680/500 us, then powers off.
 - `PIPETTE_TIP_MOVE_SECONDS = 2`: each extract/return phase of command 104 gets 2 seconds.
   These are timer-based travel allowances; the servos have no position feedback.
 - The infrared proximity sensor uses GPIO28 ADC, threshold 2048/4095, high = present.
@@ -124,7 +124,7 @@ SB_Control together. Existing saved projects must change old remove requests fro
 | 100 amount f (0..1) | Servo0 to 680 us; servo1 = pull + amount × (push − pull) for 3 s, then pull (500 us) for 3 s; power off | — |
 | 101 | Servo1 liquid exit (2500 us): 2 s travel allowance + 3 s hold, then power off; no automatic return | — |
 | 102 | Insert pipette tip: hold servo0 at 2380 us with no timeout until another servo0 command | — |
-| 103 | Stand: servo0 to 2380 us, servo1 to 500 us; both powered for 1 s, then off | — |
+| 103 | Stand: servo0 to 680 us, servo1 to 500 us; both powered for 1 s, then off | — |
 | 104 | Remove tip: servo0 to 2380 us for 2 s, then 680 us for 2 s; power off | — |
 | 105 | Read infrared presence using the ADC midpoint; print ADC and presence to USB Serial | 106, 0 or 1 as float |
 
@@ -154,7 +154,7 @@ SBARMV10 `38` wraps `[To ID, EE command, payload]`; it always adds `From ID=0`.
 38 1 100 0.5               # Half stroke inhale: 1350 us for 3 s, then 500 us for 3 s
 38 1 101                   # Exhale
 84 102                     # Insert tip: servo0 holds 2380 us
-84 103                     # Stand: 2380/500 us, power off after 1 s
+84 103                     # Stand: 680/500 us, power off after 1 s
 84 104                     # Remove tip
 84 105                     # Mini-holder presence; reply EE code 106
 ```

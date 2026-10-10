@@ -55,7 +55,7 @@ static void pipette_command(uint8_t code, const uint8_t *payload, size_t size) {
     case 103: // Stand: replace both pending movements and power off after one second.
         if (size) return;
         pipette_return[0] = pipette_return[1] = false;
-        EE::set_servo(0, PIPETTE_TIP_INSERT_US, PIPETTE_STAND_SECONDS);
+        EE::set_servo(0, PIPETTE_TIP_RETURN_US, PIPETTE_STAND_SECONDS);
         EE::set_servo(1, PIPETTE_PISTON_PULL_US, PIPETTE_STAND_SECONDS);
         break;
     case 104: // Eject tip, then restore the tip holder.

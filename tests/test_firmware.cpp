@@ -130,15 +130,15 @@ int main() {
     advance(1000); assert(test_pins[Servo1_EN_PIN] == LOW);
     // 103: stand supersedes both deferred strokes and switches both channels off at 1 s.
     command(100,{1}); command(104); advance(500); command(103);
-    assert(test_servo_us[Servo0_PIN] == 2380 && test_servo_us[Servo1_PIN] == 500);
+    assert(test_servo_us[Servo0_PIN] == 680 && test_servo_us[Servo1_PIN] == 500);
     advance(999); assert(test_pins[Servo0_EN_PIN] == HIGH && test_pins[Servo1_EN_PIN] == HIGH);
     advance(1); assert(test_pins[Servo0_EN_PIN] == LOW && test_pins[Servo1_EN_PIN] == LOW);
     advance(6000);
-    assert(test_servo_us[Servo0_PIN] == 2380 && test_servo_us[Servo1_PIN] == 500);
+    assert(test_servo_us[Servo0_PIN] == 680 && test_servo_us[Servo1_PIN] == 500);
     assert(test_pins[Servo0_EN_PIN] == LOW && test_pins[Servo1_EN_PIN] == LOW);
     command(102); Serial.input = "103\n"; loop(); advance(1000);
     assert(test_pins[Servo0_EN_PIN] == LOW && test_pins[Servo1_EN_PIN] == LOW);
-    assert(test_servo_us[Servo0_PIN] == 2380 && test_servo_us[Servo1_PIN] == 500);
+    assert(test_servo_us[Servo0_PIN] == 680 && test_servo_us[Servo1_PIN] == 500);
 #else
     int before = test_servo_us[Servo1_PIN]; command(100,{1}); assert(test_servo_us[Servo1_PIN] == before);
 #endif
