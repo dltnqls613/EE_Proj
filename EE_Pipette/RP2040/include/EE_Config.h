@@ -1,6 +1,6 @@
 #pragma once
 
-// Each model supplies this configuration while sharing common/EE_Standard.
+// This model configures the standard library bundled in lib/EE_Standard.
 #define EE_DEFAULT_ID 1
 #define EE_DEFAULT_NAME "EE_Pipette"
 #define EE_UART_BAUD 1500000

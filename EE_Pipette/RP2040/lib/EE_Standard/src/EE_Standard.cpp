@@ -12,6 +12,7 @@ static_assert(EE_DEFAULT_ID > 0 && EE_DEFAULT_ID < DISCOVERY_ID, "EE ID must be 
 static_assert(sizeof(float) == 4, "Protocol requires float32");
 static SendPacket send_packet;
 static SpecialCommand special_command;
+static bool local_reply = false;
 static uint8_t device_id = EE_DEFAULT_ID;
 static char device_name[MAX_NAME + 1] = EE_DEFAULT_NAME;
 static Servo servos[2];
@@ -88,9 +89,23 @@ void reply(uint8_t code, const uint8_t *payload, size_t size) {
     for (size_t i = 0; i < size + 7; ++i) checksum += packet[i];
     packet[size + 7] = checksum;
     send_packet(packet, size + 8);
+    if (local_reply && code == 3) {
+        Serial.print("[EE reply] 3 ");
+        Serial.write(payload, size);
+        Serial.println();
+    }
 }
 void reply_floats(uint8_t code, const float *values, size_t count) {
     reply(code, reinterpret_cast<const uint8_t *>(values), count * sizeof(float));
+    if (local_reply) {
+        Serial.print("[EE reply] ");
+        Serial.print(code);
+        for (size_t i = 0; i < count; ++i) {
+            Serial.print(" ");
+            Serial.print(values[i], 6);
+        }
+        Serial.println();
+    }
 }
 bool read_floats(const uint8_t *payload, size_t size, float *values, size_t count) {
     if (size != count * sizeof(float)) return false;
@@ -214,7 +229,10 @@ static void dispatch(uint8_t code, const uint8_t *payload, size_t size) {
     }
 }
 void local_command(uint8_t code, const uint8_t *payload, size_t size) {
-    if (size <= MAX_PACKET - 8) dispatch(code, payload, size);
+    if (size > MAX_PACKET - 8) return;
+    local_reply = true;
+    dispatch(code, payload, size);
+    local_reply = false;
 }
 void receive(uint8_t byte) {
     uint32_t now = millis();

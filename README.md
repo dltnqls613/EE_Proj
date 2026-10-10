@@ -1,7 +1,8 @@
 # EE_Proj
 
 RP2040 EndEffector firmware. The first model is `EE_Pipette/RP2040`.
-All models share `common/EE_Standard`; model-specific commands remain in `src/main.cpp`.
+The complete firmware project is inside `EE_Pipette/RP2040`, including the standard
+command library in `lib/EE_Standard`. Model-specific commands remain in `src/main.cpp`.
 The actuator-only V10 command table/EEPROM layout from the starter was replaced by
 EE settings, so actuator command numbers cannot accidentally drive an EE.
 
@@ -14,8 +15,11 @@ EE settings, so actuator command numbers cannot accidentally drive an EE.
 - `GIT_PULL.bat`: fetch updates with `git pull --ff-only`.
 - No force push, automatic reset of working files, or automatic conflict resolution.
 
-Open `EE_Pipette/RP2040` in VS Code/PlatformIO. Keep its parent directories because
-`lib_extra_dirs = ../../common` imports the shared library.
+Open `EE_Pipette/RP2040` in VS Code/PlatformIO. This folder contains all project source,
+headers and local libraries; it can be copied on its own and built/uploaded as a complete
+project. PlatformIO automatically includes `lib/EE_Standard` in the same RP2040 firmware.
+No parent-folder library path or separate standard-command upload is required.
+For a new EE model, include this standard library inside that model's RP2040 project too.
 
 ```sh
 pio run -d EE_Pipette/RP2040
@@ -73,11 +77,40 @@ are ignored. A partial frame expires after a 100 ms inter-byte gap.
 - EE name is saved to flash on command 1. ID is selected by model configuration;
   EE_Command currently defines no wire command for changing the ID.
 - UART and USB text use the same dispatcher. USB text does not alter partial UART frames.
-  Query responses remain binary UART replies to the master; USB only prints diagnostics.
+  Query responses remain binary UART replies to the master. Queries entered over USB
+  also print a readable `[EE reply] <code> <values>` line on the USB serial monitor.
+
+## USB serial testing
+
+Connect the RP2040 directly by USB and open its serial monitor at **1,000,000 baud**.
+Send one command per line with LF or CRLF. Enter the EE command directly, without
+the SBARMV10 `84` prefix. PlatformIO's monitor speed is configured in `platformio.ini`.
+
+| USB input | Result |
+|---|---|
+| `1 EE_Pipette` | Save the name; print `[EE reply] 3 EE_Pipette` |
+| `2` | Print the current name with reply code 3 |
+| `4 0 1500 1` | Servo0 at 1500 us, powered for 1 second |
+| `5` | Print both last commanded servo pulses with reply code 6 |
+| `7 0 0.25 1` | Motor0 at 25% power for 1 second |
+| `8` | Print current motor powers with reply code 9 |
+| `10` / `12` / `14` | Print weight / temperature / raw ADC with codes 11 / 13 / 15 |
+| `16 0.1 1` | Heater at 10% power for 1 second |
+| `17` | Print current heater power with reply code 18 |
+| `19 40` | Set the PID target to 40 Celsius; requires a calibrated temperature sensor |
+| `20 0.1` / `21 0.01` / `22 0.2` | Set PID kp / ki / kd individually |
+| `23` | Print target, kp, ki, kd with reply code 24 |
+
+Slash-separated examples mean separate commands, not a literal slash in the input.
+Codes **3, 6, 9, 11, 13, 15, 18 and 24 are replies**; test them by sending their
+corresponding request. Output-setting commands do not send an acknowledgement; use
+the matching query to inspect the setting. Missing or uncalibrated weight/temperature
+prints `nan`. A pulse query reports the commanded target, not measured servo motion.
+Pipette commands also work directly, for example `102`, `103` and `105`.
 
 ## Standard commands
 
-Every request below is dispatched by `common/EE_Standard/src/EE_Standard.cpp` for
+Every request below is dispatched by `EE_Pipette/RP2040/lib/EE_Standard/src/EE_Standard.cpp` for
 both UART and USB text input. The model's code 4 callback only cancels a pending
 pipette return after a successful standard servo command; it is not the standard dispatcher.
 

@@ -35,6 +35,16 @@ struct SerialStub {
     int read() { int c = input[0]; input.erase(0,1); return c; }
     void print(const char *value) { output += value; }
     void print(int value) { output += std::to_string(value); }
+    void print(float value, int digits) {
+        char text[64];
+        std::snprintf(text, sizeof(text), "%.*f", digits, double(value));
+        output += text;
+    }
+    size_t write(const uint8_t *data, size_t size) {
+        output.append(reinterpret_cast<const char *>(data), size);
+        return size;
+    }
+    void println() { output += '\n'; }
     void println(const char *value) { output += std::string(value) + '\n'; }
 };
 inline SerialStub Serial;

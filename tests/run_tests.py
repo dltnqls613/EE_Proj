@@ -10,7 +10,7 @@ with tempfile.TemporaryDirectory() as directory:
         args = ['g++', '-std=c++17', '-Wall', '-Wextra', '-Werror',
                 '-I'+str(root/'tests/stubs'), '-I'+str(root/'EE_Pipette/RP2040/include'),
                 '-I'+str(root/'EE_Pipette/RP2040/lib/config/src'),
-                '-I'+str(root/'common/EE_Standard/src')]
+                '-I'+str(root/'EE_Pipette/RP2040/lib/EE_Standard/src')]
         if not configured:
             # Keep coverage of the missing-endpoint guard for future models.
             args.append('-DPIPETTE_PISTON_PULL_US=0')

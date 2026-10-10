@@ -1,5 +1,5 @@
 // Executes the production parser, hardware commands and pipette state machine.
-#include "../common/EE_Standard/src/EE_Standard.cpp"
+#include "../EE_Pipette/RP2040/lib/EE_Standard/src/EE_Standard.cpp"
 #include "../EE_Pipette/RP2040/src/main.cpp"
 #include <cassert>
 #include <iostream>
@@ -159,15 +159,37 @@ int main() {
     };
     for (const auto &request : standard) {
         replies = Uart.output.size();
+        Serial.output.clear();
         Serial.input = request.text; loop();
         assert(Uart.output.size() == replies + (request.reply != 0));
-        if (request.reply) check_reply(request.reply);
+        if (request.reply) {
+            check_reply(request.reply);
+            std::string expected = "[EE reply] " + std::to_string(request.reply) + " ";
+            if (request.reply == 3) expected += "USB Pipette";
+            else {
+                int count = (Uart.output.back().size() - 8) / sizeof(float);
+                for (int i = 0; i < count; ++i) {
+                    char value[64];
+                    std::snprintf(value, sizeof(value), "%s%.6f", i ? " " : "", double(reply_value(i)));
+                    expected += value;
+                }
+            }
+            assert(Serial.output == expected + '\n');
+        } else assert(Serial.output.empty());
         if (request.reply == 6) assert(reply_value(1) == 1500);
         if (request.reply == 9) assert(reply_value() == .25f);
         if (request.reply == 18) assert(reply_value() == .5f);
         if (request.reply == 24)
             assert(reply_value() == 40 && reply_value(1) == 1 && reply_value(2) == 2 && reply_value(3) == 3);
     }
+    // UART queries keep binary replies without leaking the USB-only echo context.
+    Serial.output.clear();
+    command(2); check_reply(3); command(23); check_reply(24);
+    assert(Serial.output.empty());
+    // Returned standard codes are not requests; malformed queries also stay silent.
+    replies = Uart.output.size();
+    Serial.input = "3\n6\n9\n11\n13\n15\n18\n24\n2 1\n"; loop();
+    assert(Uart.output.size() == replies && Serial.output.empty());
     // uint32 timer wrap.
     test_ms = 0xFFFFFFF0; command(7,{0,1,.1f}); test_ms = 100; loop();
     command(8); assert(reply_value() == 0);
